@@ -1,0 +1,28 @@
+[Unit]
+Description={{ service_name }}
+After=docker.service
+Requires=docker.service
+ConditionFileNotEmpty={{ compose_config }}
+
+[Service]
+User={{ service_user }}
+WorkingDirectory=/opt/{{ service_name }}
+TimeoutStartSec=infinity
+Restart=yes
+
+StandardOutput=append:/opt/{{ service_name }}/out.log
+StandardError=append:/opt/{{ service_name }}/err.log
+
+# dash prepending ExecStartPre command accepts error exit code as ok
+ExecStartPre=-/usr/bin/docker compose -f {{ compose_config }} stop
+{% if env_script is defined %}
+ExecStart=/bin/bash -c "/opt/{{ service_name }}/env.sh && /usr/bin/docker compose -f {{ compose_config }} up"
+ExecReload=/bin/bash -c "/opt/{{ service_name }}/env.sh && /usr/bin/docker compose -f {{ compose_config }} restart"
+{% else %}
+ExecStart=/usr/bin/docker compose -f {{ compose_config }} up
+ExecReload=/usr/bin/docker compose -f {{ compose_config }} restart
+{% endif %}
+ExecStop=/usr/bin/docker compose -f {{ compose_config }} stop
+
+[Install]
+WantedBy=multi-user.target

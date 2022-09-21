@@ -1,0 +1,95 @@
+---
+
+- name: Install Docker
+  import_role:
+    name: docker
+
+- set_fact:
+    service_group: "{{ service_name }}"
+  when: service_group is not defined
+
+- set_fact:
+    service_user: "{{ service_name }}"
+  when: service_user is not defined
+
+- name: Create group
+  group:
+    name: "{{ service_group }}"
+    state: present
+
+- name: Create user
+  user:
+    name: "{{ service_user }}"
+    group: "{{ service_group }}"
+    shell: /bin/bash
+    state: present
+
+- name: Make data directory
+  file:
+    path: "/opt/{{ service_name }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    state: directory
+
+- set_fact:
+    compose_config: "/opt/{{ service_name }}/docker-compose.yml"
+
+- name: Copy Docker Compose config
+  copy:
+    src: "{{ compose_file }}"
+    dest: "{{ compose_config }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: 0540
+
+- name: Copy systemd config for public images
+  template:
+    src: ../templates/docker-compose.service.j2
+    dest: "/etc/systemd/system/{{ service_name }}.service"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: 0400
+  register: systemd_config
+
+- name: Systemd daemon-reload
+  command: "systemctl daemon-reload"
+  when: systemd_config.changed
+
+- name: Enable service
+  systemd:
+    name: "{{ service_name }}"
+    enabled: yes
+    masked: no
+
+# optional shell script to create file /opt/{{ service_name }}/.env
+#  executed as {{ service_user }} and cwd /opt/{{ service_name }}
+- block:
+    - name: Copy env script
+      copy:
+        src: "{{ env_script }}"
+        dest: "/opt/{{ service_name }}/env.sh"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: 0777
+    - name: Init Docker .env
+      shell:
+        cmd: ./env.sh
+        chdir: "/opt/{{ service_name }}"
+    - name: Chown Docker .env
+      file:
+        path: "/opt/{{ service_name }}/.env"
+        owner: "{{ service_user }}"
+        group: "{{ service_group }}"
+        mode: 0777
+  when: env_script is defined
+
+- name: Pull Docker images
+  command: "/usr/bin/docker compose -f {{ compose_config }} pull"
+  when: pull_images | default(true) | bool
+
+- name: Add user to docker group
+  user:
+    name: "{{ service_user }}"
+    groups: docker
+    append: true
+    state: present

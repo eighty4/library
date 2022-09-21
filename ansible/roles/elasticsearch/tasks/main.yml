@@ -1,0 +1,10 @@
+---
+- name: Download and install Elasticsearch
+  import_tasks: es.install.yml
+
+#- name: Install and configure firewall
+#  import_role:
+#    name: ../roles/firewall
+#  vars:
+#    service_ports: ['9200']
+#    ssh_port: '22'
